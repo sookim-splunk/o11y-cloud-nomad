@@ -10,6 +10,7 @@
 - [3. Collect Nomad metrics](#3-collect-nomad-metrics)
   - [Client Server 에서 prometheus 메트릭 설정하기](#client-server-에서-prometheus-메트릭-설정하기)
   - [otel-agent.nomad 에서 receiver 설정하기](#otel-agentnomad-에서-receiver-설정하기)
+  - [docker 그룹 확인](#docker-그룹-확인)
   - [에이전트 재배포 후 수집 확인](#에이전트-재배포-후-수집-확인-1)
 - [4. APM Instrumentation](#4-apm-instrumentation)
 
@@ -263,7 +264,9 @@ service:
       - smartagent/docker-container-stats
       - prometheus/nomad
 ```
+
 ## docker 그룹 확인
+
 ```bash
 $ cat /etc/group | grep docker
 
@@ -289,7 +292,7 @@ $ cat /etc/group | grep docker
           "--config=local/config/otel-agent-config.yaml",
           "--metrics-addr=0.0.0.0:8889",
         ]
-...
+```
 
 ## 에이전트 재배포 후 수집 확인
 
