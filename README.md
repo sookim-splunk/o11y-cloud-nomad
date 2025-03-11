@@ -72,9 +72,99 @@ $ nomad job run otel-agent.nomad
 
 ## Client Server 에서 nomad 설정 수정
 
+클라이언트 서버에 콘솔로 접근 후, nomad 설정파일을 엽니다
+
+```bash
+$ cd /etc/nomad.d/
+$ sudo vi nomad.hcl
+```
+
+설정 파일에 아래와 같은 형식으로 볼륨 마운트 설정을 넣어줍니다
+
+```bash
+# nomad.hcl
+
+data_dir  = "/opt/nomad"
+bind_addr = "0.0.0.0"
+
+client {
+  host_volume "dockersock" {
+    path      = "/var/run/docker.sock"
+    read_only = true
+  }
+}
+```
+
 ## otel-agent.nomad 파일 수정
 
+에이전트 설정 파일에 아래와 같이 내용을 추가합니다
+
+```bash
+# otel-agent.nomad
+
+job "otel-agent" {
+
+
+  group "otel-agent" {
+    volume "vol" {
+      type      = "host"
+      read_only = true
+      source    = "dockersock"
+    }
+
+
+    task "otel-agent" {
+      driver = "docker"
+
+      volume_mount {
+        volume      = "vol"
+        destination = "/var/run/docker.sock"
+        read_only   = true
+      }
+
+
+receivers:
+  smartagent/docker-container-stats:
+    type: docker-container-stats
+
+
+service:
+  pipelines:
+    metrics:
+      exporters:
+      - debug
+      - signalfx
+      processors:
+      - memory_limiter
+      - batch
+      - resourcedetection
+      receivers:
+      - hostmetrics
+      - signalfx
+      - smartagent/docker-container-stats
+
+```
+
 ## 에이전트 재배포 후 수집 확인
+
+otel-agent.nomad 파일로 잡을 다시 구동시켜 새로운 설정이 에이전트에 반영 되도록 합니다.
+
+```bash
+$ nomad job run otel-agent.nomad
+
+==> 2025-03-11T09:45:30+09:00: Monitoring evaluation "033c1e2e"
+    2025-03-11T09:45:30+09:00: Evaluation triggered by job "otel-agent"
+    2025-03-11T09:45:30+09:00: Allocation "fedecf6e" created: node "85b7e6e9", group "otel-agent"
+    2025-03-11T09:45:30+09:00: Allocation "3f403317" created: node "c55ca068", group "otel-agent"
+    2025-03-11T09:45:30+09:00: Evaluation status changed: "pending" -> "complete"
+==> 2025-03-11T09:45:30+09:00: Evaluation "033c1e2e" finished with status "complete"
+```
+
+Nomad UI 페이지로 가서 job이 제대로 구동되고 있는지 확인합니다.
+![2-1. Nomad Job Status](./src/images/2-1-nomad-job-status.jpg)
+
+Splunk Observability Cloud 로 가서 컨테이너 메트릭이 유입되고 있는지 확인합니다.
+![2-2. O11y Container Dashboard](./src/images/2-2-o11y-container-dashboard.jpg)
 
 # 3. Collect Nomad metrics
 
