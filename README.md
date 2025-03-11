@@ -202,6 +202,14 @@ $ sudo vi nomad.hcl
 ```bash
 # nomad.hcl
 
+# plugin "docker" / config 항목에 allow_privileged = true 을 추가 합니다.
+plugin "docker" {
+  config {
+    endpoint = "unix:///var/run/docker.sock"
+    allow_privileged = true  # 권한 문제 방지
+  }
+}
+
 # 아래 텔레메트리 설정을 Client 바깥에 넣습니다
 telemetry {
   collection_interval        = "1s"
@@ -228,7 +236,7 @@ receivers:
           format: ['prometheus']
         static_configs:
         - targets:
-          - "<client_hostname>:4646"
+          - "<server_hostname>:4646" # ip-172-31-17-214.ec2.internal:4646 이렇게 입력해야 함.
 
 processors:
   resourcedetection/os:
@@ -255,6 +263,33 @@ service:
       - smartagent/docker-container-stats
       - prometheus/nomad
 ```
+## docker 그룹 확인
+```bash
+$ cat /etc/group | grep docker
+
+그룹정보를 추가합니다. (group_add)
+    task "otel-agent" {
+      driver = "docker"
+
+      volume_mount {
+        volume      = "vol"
+        destination = "/var/run/docker.sock"
+        read_only   = true
+      }
+
+      config {
+        image = "quay.io/signalfx/splunk-otel-collector:latest"
+        group_add = [
+          "992"  # 호스트의 docker 그룹 ID
+        ]
+
+        force_pull = true
+        entrypoint = [
+          "/otelcol",
+          "--config=local/config/otel-agent-config.yaml",
+          "--metrics-addr=0.0.0.0:8889",
+        ]
+...
 
 ## 에이전트 재배포 후 수집 확인
 
