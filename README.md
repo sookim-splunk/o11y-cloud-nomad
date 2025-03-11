@@ -1,3 +1,18 @@
+**Table of contents**
+
+- [1. Install OTel Agent](#1-install-otel-agent)
+  - [OTel Agent Job Download 하기](#otel-agent-job-download-하기)
+  - [Job Definition 수정하기](#job-definition-수정하기)
+- [2. Collect Docker container metrics](#2-collect-docker-container-metrics)
+  - [Client Server 에서 nomad 설정 수정](#client-server-에서-nomad-설정-수정)
+  - [otel-agent.nomad 파일 수정](#otel-agentnomad-파일-수정)
+  - [에이전트 재배포 후 수집 확인](#에이전트-재배포-후-수집-확인)
+- [3. Collect Nomad metrics](#3-collect-nomad-metrics)
+  - [Client Server 에서 prometheus 메트릭 설정하기](#client-server-에서-prometheus-메트릭-설정하기)
+  - [otel-agent.nomad 에서 receiver 설정하기](#otel-agentnomad-에서-receiver-설정하기)
+  - [에이전트 재배포 후 수집 확인](#에이전트-재배포-후-수집-확인-1)
+- [4. APM Instrumentation](#4-apm-instrumentation)
+
 # 1. Install OTel Agent
 
 ## OTel Agent Job Download 하기
@@ -168,10 +183,100 @@ Splunk Observability Cloud 로 가서 컨테이너 메트릭이 유입되고 있
 
 # 3. Collect Nomad metrics
 
+이제는 노마드 플랫폼에서 제공하는 노마드에 특화된 메트릭을 추가로 수집해야합니다.
+노마드 클러스터를 관리하기 위해서는 리소스를 구분하는 단위가 노마드에서 사용하는 단위 (JOB, Allocation, Server, Client 등) 로 만들어진 메트릭을 가져와야 의미가 있습니다
+
 ## Client Server 에서 prometheus 메트릭 설정하기
+
+제일 처음 해야 될 절차는 노마드 컨테이너를 실행시키는 클라이언트 서버에서 Prometheus metrics를 발생(publish) 시키도록 명시적으로 설정을 해 주어야 합니다.
+
+클라이언트 서버로 접속 해 봅시다
+
+```bash
+$ cd /etc/nomad.d/
+$ sudo vi nomad.hcl
+```
+
+설정 파일에 아래와 같은 형식으로 볼륨 마운트 설정을 넣어줍니다
+
+```bash
+# nomad.hcl
+
+# 아래 텔레메트리 설정을 Client 바깥에 넣습니다
+telemetry {
+  collection_interval        = "1s"
+  disable_hostname           = true
+  prometheus_metrics         = true
+  publish_allocation_metrics = true
+  publish_node_metrics       = true
+}
+```
 
 ## otel-agent.nomad 에서 receiver 설정하기
 
+에이전트 파일을 열어서 receivers 아래에 있는 설정에 다음과 같이 추가합니다
+
+```bash
+receivers:
+  prometheus/nomad:
+    config:
+      scrape_configs:
+      - job_name: nomad
+        scrape_interval: 10s
+        metrics_path: /v1/metrics
+        params:
+          format: ['prometheus']
+        static_configs:
+        - targets:
+          - "<client_hostname>:4646"
+
+processors:
+  resourcedetection/os:
+    detectors:
+      - system
+    system:
+      hostname_sources:
+        - os
+
+service:
+  pipelines:
+    metrics:
+      exporters:
+      - debug
+      - signalfx
+      processors:
+      - memory_limiter
+      - batch
+      - resourcedetection
+      - resourcedetection/os
+      receivers:
+      - hostmetrics
+      - signalfx
+      - smartagent/docker-container-stats
+      - prometheus/nomad
+```
+
 ## 에이전트 재배포 후 수집 확인
 
+otel-agent.nomad 파일로 잡을 다시 구동시켜 새로운 설정이 에이전트에 반영 되도록 합니다.
+
+```bash
+$ nomad job run otel-agent.nomad
+
+==> 2025-03-11T09:45:30+09:00: Monitoring evaluation "033c1e2e"
+    2025-03-11T09:45:30+09:00: Evaluation triggered by job "otel-agent"
+    2025-03-11T09:45:30+09:00: Allocation "fedecf6e" created: node "85b7e6e9", group "otel-agent"
+    2025-03-11T09:45:30+09:00: Allocation "3f403317" created: node "c55ca068", group "otel-agent"
+    2025-03-11T09:45:30+09:00: Evaluation status changed: "pending" -> "complete"
+==> 2025-03-11T09:45:30+09:00: Evaluation "033c1e2e" finished with status "complete"
+```
+
+Nomad UI 페이지로 가서 job이 제대로 구동되고 있는지 확인합니다.
+![2-1. Nomad Job Status](./src/images/2-1-nomad-job-status.jpg)
+
+Splunk Observability Cloud 로 가서 노마드 메트릭이 유입되고 있는지 확인합니다.
+![2-2. O11y Container Dashboard](./src/images/3-1-o11y-nomad-metrics.jpg)
+
 # 4. APM Instrumentation
+
+몰라
