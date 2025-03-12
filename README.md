@@ -221,6 +221,7 @@ Splunk Observability Cloud 로 가서 컨테이너 메트릭이 유입되고 있
 제일 처음 해야 될 절차는 노마드 컨테이너를 실행시키는 클라이언트 서버에서 Prometheus metrics를 발생(publish) 시키도록 명시적으로 설정을 해 주어야 합니다.
 
 Nomad Server와 Client들의 /etc/nomad.d/nomad.hcml 에서 아래 내용을 추가 합니다.
+```bash
 telemetry {
   collection_interval        = "5s"
   disable_hostname           = false
@@ -259,7 +260,8 @@ telemetry {
 }
 ```
 
-# Nomad Server의 server.hcl
+Nomad Server의 server.hcl
+```bash
 $ cat /etc/nomad.d/server.hcl 
 
 datacenter = "aws"
@@ -276,13 +278,15 @@ client {
 
 telemetry {
   collection_interval = "5s"
-  disable_hostname = true
+  disable_hostname = false
   prometheus_metrics = true
   publish_allocation_metrics = true
   publish_node_metrics       = true
 }
+```
 
-# Nomad Server의 client.hcl
+Nomad Client의 client.hcl
+```bash
 $ cat /etc/nomad.d/client.hcl 
 datacenter = "aws"
 data_dir = "/opt/nomad"
@@ -306,27 +310,31 @@ plugin "docker" {
 
 telemetry {
   collection_interval = "5s"
-  disable_hostname = true
+  disable_hostname = false
   prometheus_metrics = true
   publish_allocation_metrics = true
   publish_node_metrics       = true
 }
-
+```
 Nomad Server / Client 들을 각각 재기동합니다.
+```bash
 $ sudo systemctl restart nomad
 $ sudo systemctl status nomad
-
+```
 Nomad Server에 환경변수를 설정합니다.
+```bash
 $ export NOMAD_VAR_host_node_addr=$HOSTNAME
 $ echo $NOMAD_VAR_host_node_addr
 ip-172-31-17-214.ec2.internal
+```
 
 저는 .bash_profile에 등록하였습니다.
+```bash
 $ cat .bash_profile 
 ...
 export PATH
 export NOMAD_VAR_host_node_addr=$HOSTNAME
-
+```
 
 
 ## otel-agent.nomad 에서 receiver 설정하기
