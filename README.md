@@ -224,7 +224,7 @@ Splunk Observability Cloud 로 가서 컨테이너 메트릭이 유입되고 있
 
 Nomad Server와 Client들의 /etc/nomad.d/nomad.hcml 에서 아래 내용을 추가 합니다.
 
-````bash
+```bash
 telemetry {
   collection_interval        = "5s"
   disable_hostname           = false
@@ -232,13 +232,14 @@ telemetry {
   publish_allocation_metrics = true
   publish_node_metrics       = true
 }
+```
 
 클라이언트 서버로 접속 해 봅시다
 
 ```bash
 $ cd /etc/nomad.d/
 $ sudo vi nomad.hcl
-````
+```
 
 설정 파일에 아래와 같은 형식으로 볼륨 마운트 설정을 넣어줍니다
 
@@ -425,12 +426,15 @@ $ nomad job run otel-agent.nomad
 ==> 2025-03-11T09:45:30+09:00: Evaluation "033c1e2e" finished with status "complete"
 ```
 
-$ node job status otel-agent
 Running 상태의 Allication ID 확인하고, 아래 명령으로 Node server host가 출력되는지 확인합니다.
+
+```bash
+$ node job status otel-agent
 
 $ node alloc exec <alloc_id> sh
 
 $ echo $HOST_NODE_ADDR
+```
 
 Nomad UI 페이지로 가서 job이 제대로 구동되고 있는지 확인합니다.
 ![2-1. Nomad Job Status](./src/images/2-1-nomad-job-status.jpg)
