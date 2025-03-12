@@ -6,11 +6,11 @@
 - [2. Collect Docker container metrics](#2-collect-docker-container-metrics)
   - [Client Server 에서 nomad 설정 수정](#client-server-에서-nomad-설정-수정)
   - [otel-agent.nomad 파일 수정](#otel-agentnomad-파일-수정)
+  - [docker 그룹 확인](#docker-그룹-확인)
   - [에이전트 재배포 후 수집 확인](#에이전트-재배포-후-수집-확인)
 - [3. Collect Nomad metrics](#3-collect-nomad-metrics)
   - [Client Server 에서 prometheus 메트릭 설정하기](#client-server-에서-prometheus-메트릭-설정하기)
   - [otel-agent.nomad 에서 receiver 설정하기](#otel-agentnomad-에서-receiver-설정하기)
-  - [docker 그룹 확인](#docker-그룹-확인)
   - [에이전트 재배포 후 수집 확인](#에이전트-재배포-후-수집-확인-1)
 - [4. APM Instrumentation](#4-apm-instrumentation)
 
@@ -160,6 +160,7 @@ service:
       - smartagent/docker-container-stats
 
 ```
+
 ## docker 그룹 확인
 
 ```bash
@@ -190,6 +191,7 @@ docker:x:992:ec2-user
           "--metrics-addr=0.0.0.0:8889",
         ]
 ```
+
 ## 에이전트 재배포 후 수집 확인
 
 otel-agent.nomad 파일로 잡을 다시 구동시켜 새로운 설정이 에이전트에 반영 되도록 합니다.
@@ -221,7 +223,8 @@ Splunk Observability Cloud 로 가서 컨테이너 메트릭이 유입되고 있
 제일 처음 해야 될 절차는 노마드 컨테이너를 실행시키는 클라이언트 서버에서 Prometheus metrics를 발생(publish) 시키도록 명시적으로 설정을 해 주어야 합니다.
 
 Nomad Server와 Client들의 /etc/nomad.d/nomad.hcml 에서 아래 내용을 추가 합니다.
-```bash
+
+````bash
 telemetry {
   collection_interval        = "5s"
   disable_hostname           = false
@@ -235,7 +238,7 @@ telemetry {
 ```bash
 $ cd /etc/nomad.d/
 $ sudo vi nomad.hcl
-```
+````
 
 설정 파일에 아래와 같은 형식으로 볼륨 마운트 설정을 넣어줍니다
 
@@ -261,8 +264,9 @@ telemetry {
 ```
 
 Nomad Server의 server.hcl
+
 ```bash
-$ cat /etc/nomad.d/server.hcl 
+$ cat /etc/nomad.d/server.hcl
 
 datacenter = "aws"
 data_dir = "/opt/nomad"
@@ -286,8 +290,9 @@ telemetry {
 ```
 
 Nomad Client의 client.hcl
+
 ```bash
-$ cat /etc/nomad.d/client.hcl 
+$ cat /etc/nomad.d/client.hcl
 datacenter = "aws"
 data_dir = "/opt/nomad"
 
@@ -316,12 +321,16 @@ telemetry {
   publish_node_metrics       = true
 }
 ```
+
 Nomad Server / Client 들을 각각 재기동합니다.
+
 ```bash
 $ sudo systemctl restart nomad
 $ sudo systemctl status nomad
 ```
+
 Nomad Server에 환경변수를 설정합니다.
+
 ```bash
 $ export NOMAD_VAR_host_node_addr=$HOSTNAME
 $ echo $NOMAD_VAR_host_node_addr
@@ -329,17 +338,18 @@ ip-172-31-17-214.ec2.internal
 ```
 
 저는 .bash_profile에 등록하였습니다.
+
 ```bash
-$ cat .bash_profile 
+$ cat .bash_profile
 ...
 export PATH
 export NOMAD_VAR_host_node_addr=$HOSTNAME
 ```
 
-
 ## otel-agent.nomad 에서 receiver 설정하기
 
 에이전트 파일을 열어서 receivers 아래에 있는 설정에 다음과 같이 추가합니다
+
 ```bash
 variable "host_node_addr" {
   type = string
@@ -400,8 +410,6 @@ service:
       - prometheus/nomad
 ```
 
-
-
 ## 에이전트 재배포 후 수집 확인
 
 otel-agent.nomad 파일로 잡을 다시 구동시켜 새로운 설정이 에이전트에 반영 되도록 합니다.
@@ -416,6 +424,7 @@ $ nomad job run otel-agent.nomad
     2025-03-11T09:45:30+09:00: Evaluation status changed: "pending" -> "complete"
 ==> 2025-03-11T09:45:30+09:00: Evaluation "033c1e2e" finished with status "complete"
 ```
+
 $ node job status otel-agent
 Running 상태의 Allication ID 확인하고, 아래 명령으로 Node server host가 출력되는지 확인합니다.
 
@@ -431,4 +440,4 @@ Splunk Observability Cloud 로 가서 노마드 메트릭이 유입되고 있는
 
 # 4. APM Instrumentation
 
-몰라
+작성 예정
