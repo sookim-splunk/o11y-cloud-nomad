@@ -160,7 +160,36 @@ service:
       - smartagent/docker-container-stats
 
 ```
+## docker 그룹 확인
 
+```bash
+$ cat /etc/group | grep docker
+docker:x:992:ec2-user
+
+그룹정보를 추가합니다. (group_add)
+
+    task "otel-agent" {
+      driver = "docker"
+
+      volume_mount {
+        volume      = "vol"
+        destination = "/var/run/docker.sock"
+        read_only   = true
+      }
+
+      config {
+        image = "quay.io/signalfx/splunk-otel-collector:latest"
+        group_add = [
+          "992"  # 호스트의 docker 그룹 ID
+        ]
+
+        force_pull = true
+        entrypoint = [
+          "/otelcol",
+          "--config=local/config/otel-agent-config.yaml",
+          "--metrics-addr=0.0.0.0:8889",
+        ]
+```
 ## 에이전트 재배포 후 수집 확인
 
 otel-agent.nomad 파일로 잡을 다시 구동시켜 새로운 설정이 에이전트에 반영 되도록 합니다.
@@ -191,6 +220,15 @@ Splunk Observability Cloud 로 가서 컨테이너 메트릭이 유입되고 있
 
 제일 처음 해야 될 절차는 노마드 컨테이너를 실행시키는 클라이언트 서버에서 Prometheus metrics를 발생(publish) 시키도록 명시적으로 설정을 해 주어야 합니다.
 
+Nomad Server와 Client들의 /etc/nomad.d/nomad.hcml 에서 아래 내용을 추가 합니다.
+telemetry {
+  collection_interval        = "5s"
+  disable_hostname           = false
+  prometheus_metrics         = true
+  publish_allocation_metrics = true
+  publish_node_metrics       = true
+}
+
 클라이언트 서버로 접속 해 봅시다
 
 ```bash
@@ -213,19 +251,108 @@ plugin "docker" {
 
 # 아래 텔레메트리 설정을 Client 바깥에 넣습니다
 telemetry {
-  collection_interval        = "1s"
-  disable_hostname           = true
+  collection_interval        = "5s"
+  disable_hostname           = false
   prometheus_metrics         = true
   publish_allocation_metrics = true
   publish_node_metrics       = true
 }
 ```
 
+# Nomad Server의 server.hcl
+$ cat /etc/nomad.d/server.hcl 
+
+datacenter = "aws"
+data_dir = "/opt/nomad"
+
+server {
+  enabled          = true
+  bootstrap_expect = 1
+}
+
+client {
+  enabled = false
+}
+
+telemetry {
+  collection_interval = "5s"
+  disable_hostname = true
+  prometheus_metrics = true
+  publish_allocation_metrics = true
+  publish_node_metrics       = true
+}
+
+# Nomad Server의 client.hcl
+$ cat /etc/nomad.d/client.hcl 
+datacenter = "aws"
+data_dir = "/opt/nomad"
+
+client {
+  enabled = true
+  servers = ["172.31.17.214:4647"]
+
+  host_volume "dockersock" {
+    path      = "/var/run/docker.sock"
+    read_only = false
+  }
+}
+
+plugin "docker" {
+  config {
+    endpoint = "unix:///var/run/docker.sock"
+    allow_privileged = true  # 권한 문제 방지
+  }
+}
+
+telemetry {
+  collection_interval = "5s"
+  disable_hostname = true
+  prometheus_metrics = true
+  publish_allocation_metrics = true
+  publish_node_metrics       = true
+}
+
+Nomad Server / Client 들을 각각 재기동합니다.
+$ sudo systemctl restart nomad
+$ sudo systemctl status nomad
+
+Nomad Server에 환경변수를 설정합니다.
+$ export NOMAD_VAR_host_node_addr=$HOSTNAME
+$ echo $NOMAD_VAR_host_node_addr
+ip-172-31-17-214.ec2.internal
+
+저는 .bash_profile에 등록하였습니다.
+$ cat .bash_profile 
+...
+export PATH
+export NOMAD_VAR_host_node_addr=$HOSTNAME
+
+
+
 ## otel-agent.nomad 에서 receiver 설정하기
 
 에이전트 파일을 열어서 receivers 아래에 있는 설정에 다음과 같이 추가합니다
-
 ```bash
+variable "host_node_addr" {
+  type = string
+}
+
+job "otel-agent" {
+  datacenters = ["dc1"]
+  type        = "system"
+....
+
+    task "otel-agent" {
+      driver = "docker"
+.....
+      env {
+        SPLUNK_ACCESS_TOKEN = "xxxx"
+        SPLUNK_REALM = "lab0"
+        SPLUNK_MEMORY_TOTAL_MIB = 500
+        HOST_NODE_ADDR = var.host_node_addr
+      }
+....
+
 receivers:
   prometheus/nomad:
     config:
@@ -237,7 +364,7 @@ receivers:
           format: ['prometheus']
         static_configs:
         - targets:
-          - "<server_hostname>:4646" # ip-172-31-17-214.ec2.internal:4646 이렇게 입력해야 함.
+          - ${HOST_NODE_ADDR}:4646
 
 processors:
   resourcedetection/os:
@@ -265,34 +392,7 @@ service:
       - prometheus/nomad
 ```
 
-## docker 그룹 확인
 
-```bash
-$ cat /etc/group | grep docker
-
-그룹정보를 추가합니다. (group_add)
-    task "otel-agent" {
-      driver = "docker"
-
-      volume_mount {
-        volume      = "vol"
-        destination = "/var/run/docker.sock"
-        read_only   = true
-      }
-
-      config {
-        image = "quay.io/signalfx/splunk-otel-collector:latest"
-        group_add = [
-          "992"  # 호스트의 docker 그룹 ID
-        ]
-
-        force_pull = true
-        entrypoint = [
-          "/otelcol",
-          "--config=local/config/otel-agent-config.yaml",
-          "--metrics-addr=0.0.0.0:8889",
-        ]
-```
 
 ## 에이전트 재배포 후 수집 확인
 
@@ -308,6 +408,12 @@ $ nomad job run otel-agent.nomad
     2025-03-11T09:45:30+09:00: Evaluation status changed: "pending" -> "complete"
 ==> 2025-03-11T09:45:30+09:00: Evaluation "033c1e2e" finished with status "complete"
 ```
+$ node job status otel-agent
+Running 상태의 Allication ID 확인하고, 아래 명령으로 Node server host가 출력되는지 확인합니다.
+
+$ node alloc exec <alloc_id> sh
+
+$ echo $HOST_NODE_ADDR
 
 Nomad UI 페이지로 가서 job이 제대로 구동되고 있는지 확인합니다.
 ![2-1. Nomad Job Status](./src/images/2-1-nomad-job-status.jpg)
